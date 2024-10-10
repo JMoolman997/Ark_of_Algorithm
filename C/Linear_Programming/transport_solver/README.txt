@@ -91,7 +91,19 @@ TROUBLESHOOTING
 - Ensure all input data is correctly formatted (comma-separated lists for vectors and matrices).
 
 ---------------------------------------------------------------
-LICENSE AND CREDITS
+DISCLAIMER
 ---------------------------------------------------------------
 
-Developed as part of the Ark of Algorithm project.
+Transport Genie is provided as-is without any guarantees of accuracy, performance, 
+or fitness for a particular purpose. It is a tool designed for educational and 
+experimental purposes, and the author assumes no responsibility for any issues 
+that may arise from its use.
+
+Use this tool at your own risk. Make sure to validate the results independently 
+if used for critical purposes.
+
+---------------------------------------------------------------
+AUTHOR
+---------------------------------------------------------------
+
+Developed by Moolman997 as part of the Ark of Algorithm project.
