@@ -5,6 +5,15 @@ Transport Genie is a command-line tool that uses Vogel's Approximation Method (V
 to solve transportation problems. It helps you find an optimal transportation plan 
 based on user-provided supply, demand, and cost matrices.
 
+It currently supports three methods of solving transportation problems:
+
+- **Vogel's Approximation Method (VAM)**
+- **North-West Corner Method (NWCM)**
+- **Least Cost Method (LCM)**
+
+The transportation problem involves minimizing the cost of transporting goods from supply nodes to demand nodes based on user-provided supply, 
+demand, and cost matrices. The tool also balances the problem by adding dummy nodes when necessary.
+
 ---------------------------------------------------------------
 HOW TO USE TRANSPORT GENIE
 ---------------------------------------------------------------
