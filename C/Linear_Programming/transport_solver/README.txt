@@ -1,9 +1,9 @@
 TRANSPORT GENIE - A CLI Tool for Solving Transportation Problems
 ===============================================================
 
-Transport Genie is a command-line tool that uses Vogel's Approximation Method (VAM) 
-to solve transportation problems. It helps you find an optimal transportation plan 
-based on user-provided supply, demand, and cost matrices.
+Transport Genie is a command-line tool for solving  transportation problems.
+It helps you find an optimal transportation plan based on user-provided supply, 
+demand, and cost matrices.
 
 It currently supports three methods of solving transportation problems:
 
