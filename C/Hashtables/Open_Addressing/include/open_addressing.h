@@ -19,12 +19,22 @@
 #define VALUE_TYPE int
 #endif
 
+#define DEFAULT_LOAD_FACTOR 0.5
+#define DEFAULT_MIN_LOAD_FACTOR 0.25
+#define DEFAULT_INACTIVE_FACTOR 0.1
+#define DEFAULT_SIZE_MAX 1024/* TODO*/
+#define DEFAULT_SIZE_MIN 13
+
 /* --- error return codes --------------------------------------------------- */
 
-#define HASH_TABLE_KEY_VALUE_PAIR_EXISTS -1
-#define HASH_TABLE_NO_SPACE_FOR_ENTRY    -2
-#define REHASH_TABLE_RESIZE_FAILURE      -3
-#define HASH_TABLE_KEY_NOT_FOUND         -4
+#define HT_FAILURE 1
+#define HT_SUCCESS 0
+#define HT_KEY_EXISTS -1
+#define HT_NO_SPACE   -2
+#define HT_KEY_NOT_FOUND -3
+#define HT_MEM_ERROR -4
+#define HT_INVALID_ARG -5
+#define HT_INVALID_STATE -6
 
 /** the container structure for a hash table */
 typedef struct hashtab HashTab;
@@ -41,8 +51,11 @@ typedef enum {
 
 /* Function prototypes */
 HashTab *init_ht(
-		unsigned int max_size,
+		size_t max_size,
+		size_t min_size,
 		float load_factor,
+		float min_load_factor,
+		float inactive_factor,
         unsigned int (*hash)(KEY_TYPE key, unsigned int size),
 		int (*match)(KEY_TYPE key1, KEY_TYPE key2),
 		ProbingMethod probing_method
@@ -80,4 +93,7 @@ void print_ht(
 		void (*keyval2str)(int flag, KEY_TYPE k, VALUE_TYPE v, char *b)
 );
 
+size_t size_ht(
+		HashTab *self
+);
 #endif /* OPEN_ADDRESSING_H */
