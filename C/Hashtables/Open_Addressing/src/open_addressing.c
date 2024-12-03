@@ -194,16 +194,14 @@ int insert_ht(
         KEY_TYPE key,
         VALUE_TYPE value
 ) {
-    int search_status;
+    int search_status, insert_status;;
     float lamda;
-
     /** TODO: 
      * - Add err and handling for out of space
      * - Add Max size check, and check resize allowed
      * - Retry or exit depending on inner function err
      * - Check out of bounds delta access
      */   
-    
     search_status = search_ht(self, key);
     if (search_status != HT_KEY_NOT_FOUND) {
         return HT_KEY_EXISTS;
@@ -214,20 +212,17 @@ int insert_ht(
     if (lamda >= self->load_factor) {
         self->prev_size = self->size;
         rehash(self, (1 << (self->delta_idx + 1)) + delta[self->delta_idx + 1]);
-        self->delta_idx = self->delta_idx++;
+        self->delta_idx = self->delta_idx + 1;
     }
     /* TODO: handle these errs properly */
     switch (self->probing_method) {
         case LINEAR:
-            if (linear_probe_insert(self, key, value) != HT_SUCCESS) {
-                return HT_FAILURE;
-            }
-            return HT_SUCCESS;
+            insert_status = linear_probe_insert(self, key, value);
+            return insert_status;
+            /*return linear_probe_insert(self, key, value);*/
         case QUADRATIC:
-            if (quadratic_probe_insert(self, key, value) != HT_SUCCESS) {
-                return HT_FAILURE;
-            }
-            return HT_SUCCESS;
+            insert_status = quadratic_probe_insert(self, key, value);
+            return insert_status;
         default:
             fprintf(stderr, "Unsupported probing method");
             exit(EXIT_FAILURE);
@@ -250,7 +245,7 @@ int remove_ht(
     /* if flag 2 we no longer consider it no need to update actual values */
     self->table[key_index].flag = 2;
     /*self->num_entries = self->num_entries - 1;*/
-    self->active = self->active--;
+    self->active = self->active - 1;
     try_downsize(self);
     return HT_SUCCESS;
 }
@@ -421,7 +416,7 @@ insert_entry:
     ht->table[current_index].flag = 1;
     ht->table[current_index].key = key;
     ht->table[current_index].value = value;
-    ht->active = ht->active++;
+    ht->active = ht->active + 1;
     return HT_SUCCESS;
 }
 
@@ -439,7 +434,6 @@ static int quadratic_probe_search(
     hash_index = ht->hash(key, ht->size);
     probe_index = hash_index;
     do {
-
         probe_index = (hash_index + ((i + i * i) >> 1)) % table_size;
         switch(ht->table[probe_index].flag) {
             case 0:
@@ -492,7 +486,7 @@ static int quadratic_probe_insert(
             case 2:
                 goto insert_entry;
             case 1:
-                continue;
+                break;
             default:
                 fprintf(
                         stderr,
@@ -510,7 +504,7 @@ insert_entry:
     ht->table[probe_index].flag = 1;
     ht->table[probe_index].key = key;
     ht->table[probe_index].value = value;
-    ht->active = ht->active++;
+    ht->active = ht->active + 1;
     return HT_SUCCESS;
 }
 
@@ -567,7 +561,7 @@ static int try_downsize(HashTab *ht) {
         if ((float)ht->active / ht->prev_size < ht->load_factor) {
             rehash_status = rehash(ht, prev_size);
             /* NOTE: No bounds check */
-            ht->delta_idx = ht->delta_idx--;
+            ht->delta_idx = ht->delta_idx - 1;
             prev_size = (1 << (ht->delta_idx - 1)) + delta[ht->delta_idx - 1]; 
         } else if (prev_size <= ht->min_size) {
             rehash_status = rehash(ht, ht->size);

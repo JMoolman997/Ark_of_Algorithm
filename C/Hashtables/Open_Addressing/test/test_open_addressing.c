@@ -80,6 +80,30 @@ void test_rehashing(void) {
     }
 }
 
+void test_insert_into_full_table_should_fail(void) {
+    /* Initialize hash table with a small fixed size 
+     * and load factor of 1.0 to prevent resizing
+     */ 
+    unsigned int i, size;
+    int result;
+
+    size = size_ht(ht);
+    ht = init_ht(2, 0, 1.0, 0, 0, NULL, NULL, probing_method);
+    TEST_ASSERT_NOT_NULL(ht);
+
+    // Fill the table to capacity
+    for (i = 0; i < size; i++) {
+        result = insert_ht(ht, i, i * 10);
+        TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
+    }
+
+    // Attempt to insert into a full table
+    result = insert_ht(ht, size, size * 10);
+    TEST_ASSERT_EQUAL_INT(HT_NO_SPACE, result);
+
+    // free_ht(ht, NULL, NULL);
+}
+
 void test_probing_method(ProbingMethod method) {
 
     probing_method = method;
@@ -90,6 +114,7 @@ void test_probing_method(ProbingMethod method) {
     RUN_TEST(test_remove_existing_key);
     RUN_TEST(test_remove_nonexistent_key);
     RUN_TEST(test_rehashing);
+    RUN_TEST(test_insert_into_full_table_should_fail);
 }
 
 // Test Runner
