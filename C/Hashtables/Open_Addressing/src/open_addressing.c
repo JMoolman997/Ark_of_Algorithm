@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "open_addressing.h"
+#include "debug_hashtab.h"
 
 #define PRINT_BUFFER_SIZE 1024
 
@@ -95,6 +96,8 @@ HashTab *init_ht(
 ) {
     HashTab *self;
 
+    DBG_start("init_ht_");
+
     self = (HashTab *)malloc(sizeof(HashTab));
     if (self == NULL) {
         fprintf(stderr, "Hashtable allocation failed");
@@ -155,6 +158,8 @@ HashTab *init_ht(
 		exit(EXIT_FAILURE);
 	}
 
+    DBG_end("_init_ht");
+
 	return self;
 }
 
@@ -162,6 +167,13 @@ int search_ht(
         HashTab *self,
         KEY_TYPE key
 ) {
+
+    DBG_info("search_ht_");
+
+    if (!self) {
+        DBG_info("_search_ht [HT_INVALID_ARG]");
+        return HT_INVALID_ARG;
+    }
     switch (self->probing_method) {
         case LINEAR:
             return linear_probe_search(self, key);
@@ -174,6 +186,7 @@ int search_ht(
             exit(EXIT_FAILURE);
     }
     /* Should never reach this point */
+    DBG_info("_search_ht [HT_INVALID_STATE]");
     return HT_INVALID_STATE;
     
 }
@@ -201,15 +214,29 @@ int insert_ht(
      * - Add Max size check, and check resize allowed
      * - Retry or exit depending on inner function err
      * - Check out of bounds delta access
-     */   
+     */
+    if (!self) {
+        DBG_end("_insert_ht [HT_INVALID_ARG]: self is NULL");
+        return HT_INVALID_ARG;
+    }
+
+    DBG_start(
+            "insert_ht_ [size:%lu, active:%lu, used:%lu]",
+            self->size,
+            self->active,
+            self->used
+    );
     search_status = search_ht(self, key);
     if (search_status != HT_KEY_NOT_FOUND) {
+        DBG_end("_insert_ht [HT_KEY_EXISTS]: key found on search");
         return HT_KEY_EXISTS;
     }
 
     /* Rehash if necessary befor inserting */
-    lamda = (float)(self->used + 1) / self->size;
+    lamda = (float)((self->active + 1) / self->size);
+    DBG_info("lamda[%f]", lamda);
     if (lamda >= self->load_factor) {
+        DBG_info("rehash triggered", lamda);
         self->prev_size = self->size;
         rehash(self, (1 << (self->delta_idx + 1)) + delta[self->delta_idx + 1]);
         self->delta_idx = self->delta_idx + 1;
@@ -218,16 +245,19 @@ int insert_ht(
     switch (self->probing_method) {
         case LINEAR:
             insert_status = linear_probe_insert(self, key, value);
+            DBG_end("_insert_ht [%d]", insert_status);
             return insert_status;
             /*return linear_probe_insert(self, key, value);*/
         case QUADRATIC:
             insert_status = quadratic_probe_insert(self, key, value);
+            DBG_end("_insert_ht [%d]", insert_status);
             return insert_status;
         default:
             fprintf(stderr, "Unsupported probing method");
             exit(EXIT_FAILURE);
     }
     /* If this point reached function is not behaving as it should */ 
+    DBG_end("_insert_ht [HT_INVALID_STATE]: should have returned by this point");
     return HT_INVALID_STATE;
 }
 
@@ -237,6 +267,9 @@ int remove_ht(
 ) {
     int key_index;
 
+    if (!self) {
+        return HT_INVALID_ARG;
+    }
     key_index = search_ht(self, key);
     if (key_index < 0) {
         return HT_KEY_NOT_FOUND;
@@ -302,7 +335,7 @@ void print_ht(
     
     if (self && keyval2str) {
         printf(
-                "--- HashTab - size[%d] - entries[%u] - loadfct[%.2f] --- \n",
+                "--- HashTab - size[%d] - entries[%lu] - loadfct[%.2f] --- \n",
                 self->size,
                 self->active,
                 self->load_factor
@@ -345,18 +378,23 @@ static int linear_probe_search(
     int match_found;
     unsigned int hash_index, current_index;
 
+    DBG_start("linear_probe_search_");
+
     match_found = 0;
     hash_index = ht->hash(key, ht->size);
+    DBG_info("Initial hash_index:%d", hash_index);
     current_index = hash_index;
     do {
         switch(ht->table[current_index].flag) {
             case 0:
+                DBG_end("_linear_probe_search [HT_KEY_NOT_FOUND]: 0 slot found");
                 return HT_KEY_NOT_FOUND;
             case 2:
                 break;
             case 1:
                 match_found = ht->match(ht->table[current_index].key, key);
                 if (match_found == 0) {
+                    DBG_end("_linear_probe_search [index:%d]", current_index);
                     return current_index;
                 }
                 break;
@@ -370,8 +408,10 @@ static int linear_probe_search(
 
         }
         current_index = (current_index + 1) % ht->size;
+        DBG_info("Next index:%d", current_index);
     } while (current_index != hash_index);
 
+    DBG_end("_linear_probe_search [HT_KEY_NOT_FOUND]: entire table traversed");
     return HT_KEY_NOT_FOUND;
 }
 
@@ -385,13 +425,14 @@ static int linear_probe_insert(
     
     /** TODO:
      * - Free memory on error */
-
+    DBG_start("linear_probe_insert_");
     hash_index = ht->hash(key, ht->size);
+    DBG_info("Initial hash_index:%d", hash_index);
     current_index = hash_index;
     do {
         switch(ht->table[current_index].flag) {
             case 0:
-                ht->used = ht->used++;
+                ht->used = ht->used + 1;
                 goto insert_entry;
             case 2:
                 goto insert_entry;
@@ -408,8 +449,9 @@ static int linear_probe_insert(
         }
         /* consider initializing table size at start*/
         current_index = (current_index + 1) % ht->size;
+        DBG_info("Next index:%d", current_index);
     } while (current_index != hash_index);
-
+    DBG_end("_linear_probe_insert [HT_NO_SPACE]: entire table traversed");
     return HT_NO_SPACE;
 
 insert_entry:
@@ -417,6 +459,7 @@ insert_entry:
     ht->table[current_index].key = key;
     ht->table[current_index].value = value;
     ht->active = ht->active + 1;
+    DBG_end("_linear_probe_insert [HT_SUCCESS]: inserted at index %d", current_index);
     return HT_SUCCESS;
 }
 
@@ -471,17 +514,19 @@ static int quadratic_probe_insert(
      * - Update default case err code
      * - Update key not found return code
      */
+    DBG_start("quadratic_probe_insert_");
     table_size = ht->size;
     hash_index = ht->hash(key, table_size);
+    DBG_info("initial hash_index: %d", hash_index);
     i = 0;
     do {
         /* NOTE this wil only guarantee table traversal when table pow of 2 */
         /* probe(i) = (hash(k) + (1/2 * i) + (1/2 * i^2)) mod m */
         probe_index = (hash_index + ((i + i * i) >> 1)) % table_size;
-        
+        DBG_info("Next index:%d", probe_index);
         switch(ht->table[probe_index].flag) {
             case 0:
-                ht->used = ht->used++;
+                ht->used = ht->used + 1;
                 goto insert_entry;
             case 2:
                 goto insert_entry;
@@ -497,7 +542,7 @@ static int quadratic_probe_insert(
         }
         i++;
     } while (i < table_size);
-
+    DBG_end("_quadratic_probe_insert [HT_NO_SPACE]: entire table traversed");
     return HT_NO_SPACE;
 
 insert_entry:
@@ -505,6 +550,7 @@ insert_entry:
     ht->table[probe_index].key = key;
     ht->table[probe_index].value = value;
     ht->active = ht->active + 1;
+    DBG_end("_quadratic_probe_insert [HT_SUCCESS]: inserted at index %d", probe_index);
     return HT_SUCCESS;
 }
 
@@ -550,7 +596,6 @@ static int32_t rehash(
 
 static int try_downsize(HashTab *ht) {
     float lamda, inactive_ratio;
-    uint32_t prev_size;
     int32_t rehash_status;
     
     lamda = (float)ht->active / ht->size;
@@ -559,11 +604,11 @@ static int try_downsize(HashTab *ht) {
     rehash_status = HT_SUCCESS;
     if (inactive_ratio > ht->inactive_factor || lamda < ht->min_load_factor) {
         if ((float)ht->active / ht->prev_size < ht->load_factor) {
-            rehash_status = rehash(ht, prev_size);
+            rehash_status = rehash(ht, ht->prev_size);
             /* NOTE: No bounds check */
             ht->delta_idx = ht->delta_idx - 1;
-            prev_size = (1 << (ht->delta_idx - 1)) + delta[ht->delta_idx - 1]; 
-        } else if (prev_size <= ht->min_size) {
+            ht->prev_size = (1 << (ht->delta_idx - 1)) + delta[ht->delta_idx - 1]; 
+        } else if (ht->prev_size <= ht->min_size) {
             rehash_status = rehash(ht, ht->size);
         }
     }

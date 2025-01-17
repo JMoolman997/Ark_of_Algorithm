@@ -7,6 +7,7 @@ UNITY_DIR = $(TEST_DIR)/unity
 # Compiler and Flags
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c99 -g -I$(INC_DIR) -I$(UNITY_DIR)/src
+CFLAGS_DEBUG = -DDEBUG_HASHTAB
 
 # Source Files
 LIB_SRCS = $(SRC_DIR)/open_addressing.c
@@ -51,6 +52,10 @@ $(TEST_EXEC): $(TEST_OBJS) $(LIB)
 $(MAIN_EXEC): $(MAIN_OBJS) $(LIB)
 	@echo "Linking $@..."
 	$(CC) $(CFLAGS) -o $@ $(MAIN_OBJS) -L. -lhashtable
+
+# Debug Build Target
+debug: CFLAGS += $(CFLAGS_DEBUG)
+debug: $(LIB) $(TEST_EXEC) $(MAIN_EXEC)
 
 # Test Target: Run the Test Executable
 test: $(TEST_EXEC)

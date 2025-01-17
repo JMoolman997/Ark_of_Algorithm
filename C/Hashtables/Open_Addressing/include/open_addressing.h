@@ -22,7 +22,7 @@
 #define DEFAULT_LOAD_FACTOR 0.5
 #define DEFAULT_MIN_LOAD_FACTOR 0.25
 #define DEFAULT_INACTIVE_FACTOR 0.1
-#define DEFAULT_SIZE_MAX 1024/* TODO*/
+#define DEFAULT_SIZE_MAX 1048576/* TODO*/
 #define DEFAULT_SIZE_MIN 13
 
 /* --- error return codes --------------------------------------------------- */
