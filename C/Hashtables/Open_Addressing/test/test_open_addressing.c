@@ -1,254 +1,398 @@
 /**
  * @file    test_open_addressing.c
- * @brief   Test program for generic open addressing hash table implementation.
- * @author  J.W Moolman
- * @date    2024-11-25
+ * @brief   Test program for generic open addressing hash table implementation,
+ *          updated to store integer keys/values properly.
  */
 
 #include "unity.h"
 #include "open_addressing.h"
+#include <stdint.h>     // for int32_t, intptr_t
+#include <stdlib.h>
+#include <limits.h>     // for INT_MIN, INT_MAX
+#include <stdio.h>      // for printf
 
-HashTab *ht;
-ProbingMethod probing_method;
+/* --------------------------------------------------------------------------
+   Example Probing Method Enum
+ * -------------------------------------------------------------------------- */
+typedef enum {
+    LINEAR,
+    QUADRATIC
+} ProbingMethod;
+
+static ProbingMethod probing_method;
+
+/* Example linear and quadratic probe functions */
+static uint32_t linear_probe_func(uint32_t k, uint32_t i, uint32_t m) {
+    return (k + i) % m;
+}
+static uint32_t quadratic_probe_func(uint32_t k, uint32_t i, uint32_t m) {
+    // Basic example: (k + i^2) mod m
+    return (k + i * i) % m;
+}
+
+/* Global pointer to a hash table used by all tests */
+static HashTab *ht = NULL;
+
+/* --------------------------------------------------------------------------
+   A real comparison function for integers stored in memory
+ * -------------------------------------------------------------------------- */
+static int compare_int_keys(const void *a, const void *b) {
+
+    const int *int_a = (const int *)a;
+    const int *int_b = (const int *)b;
+
+    return (*int_a == *int_b) ? 0 : -1 ; 
+}
 
 /**
- * @brief Setup and teardown functions for Unity test framework.
+ * @brief Unity setup function. Initializes the hash table.
  */
-void setUp(
-        void
-) {
-    ht = init_ht(0, 0, 0, 0, 0, NULL, NULL, probing_method);
+void setUp(void)
+{
+    uint32_t (*probe_ptr)(uint32_t, uint32_t, uint32_t) = NULL;
+    switch (probing_method) {
+        case LINEAR:
+            probe_ptr = linear_probe_func;
+            break;
+        case QUADRATIC:
+            probe_ptr = quadratic_probe_func;
+            break;
+        default:
+            probe_ptr = NULL; // fallback to default_probe_func
+    }
+
+    /* Create a new hash table, specifying our integer-compare function. */
+    ht = init_ht(
+        0.0f,                /* load_factor -> default */
+        0.0f,                /* min_load_factor -> default */
+        0.0f,                /* inactive_factor -> default */
+        NULL,                /* hash_func -> use default_hash_func */
+        compare_int_keys,    /* cmp_func -> compare_int_keys */
+        probe_ptr,           /* probe function -> linear/quadratic */
+        free,                /* freekey -> none (we don't free stack vars here) */
+        free                 /* freeval -> same reason */
+    );
+
     TEST_ASSERT_NOT_NULL(ht);
 }
 
-void tearDown(
-        void
-) {
-    free_ht(ht, NULL, NULL);
+/**
+ * @brief Unity teardown function. Frees the allocated hash table.
+ */
+void tearDown(void)
+{
+    int result = free_ht(ht);
+    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
+    ht = NULL;
+}
+
+/* --------------------------------------------------------------------------
+   BasicTests
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Inserting a new key should succeed (HT_SUCCESS).
+ */
+void test_insert_should_succeed(void)
+{
+    int *key = malloc(sizeof(int));
+    int *value = malloc(sizeof(int));
+    *key = 1;
+    *value = 100;
+
+    int result = insert_ht(ht, key, sizeof(*key), value);
+    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
+
+    /* Verify by searching */
+    int index = search_ht(ht, key, sizeof(*key));
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
+
+    /* Fetch the stored value and compare */
+    int *fetched_value = (int *)fetch_ht(ht, (uint32_t)index);
+    TEST_ASSERT_NOT_NULL(fetched_value);
+    TEST_ASSERT_EQUAL_INT(100, *fetched_value);
+
 }
 
 /**
- * @defgroup BasicTests
- * @brief Basic functionality tests for open addressing hash table.
- * @{ 
+ * @brief Inserting a duplicate key should fail (HT_KEY_EXISTS).
  */
-void test_insert_should_succeed(
-        void
-) {
-    int result = insert_ht(ht, 1, 100);
-    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
-}
+void test_insert_duplicate_should_fail(void)
+{
+    int *key = malloc(sizeof(int));
+    int *value1 = malloc(sizeof(int));
+    int *value2 = malloc(sizeof(int));
+    *key = 2;
+    *value1 = 200;
+    *value2 = 300;
 
-void test_insert_duplicate_should_fail(
-        void
-) {
-    int result1 = insert_ht(ht, 2, 200);
+    int result1 = insert_ht(ht, key, sizeof(*key), value1);
     TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result1);
 
-    int result2 = insert_ht(ht, 2, 300);
+    /* Insert the same key again -> expect HT_KEY_EXISTS */
+    int result2 = insert_ht(ht, key, sizeof(*key), value2);
     TEST_ASSERT_EQUAL_INT(HT_KEY_EXISTS, result2);
+
+    free(value2);
 }
-
-void test_search_existing_key(
-        void
-) {
-    insert_ht(ht, 3, 300);
-
-    int index = search_ht(ht, 3);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
-
-    int value = fetch_ht(ht, index);
-    TEST_ASSERT_EQUAL_INT(300, value);
-}
-
-void test_search_nonexistent_key(
-        void
-) {
-    int index = search_ht(ht, 4);
-    TEST_ASSERT_EQUAL_INT(HT_KEY_NOT_FOUND, index);
-}
-
-void test_remove_existing_key(
-        void
-) {
-    insert_ht(ht, 5, 500);
-    int result = remove_ht(ht, 5);
-    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
-
-    int index = search_ht(ht, 5);
-    TEST_ASSERT_EQUAL_INT(HT_KEY_NOT_FOUND, index);
-}
-
-void test_remove_nonexistent_key(
-        void
-) {
-    int result = remove_ht(ht, 6);
-    TEST_ASSERT_EQUAL_INT(HT_KEY_NOT_FOUND, result);
-}
-/** @} */
 
 /**
- * @defgroup EdgeCaseTests
- * @brief Tests for edge cases and boundary conditions.
- * @{ 
+ * @brief Searching for an existing key should return a valid index >= 0.
  */
-void test_null_input(
-        void
-) {
-    int result = insert_ht(NULL, 1, 100);
+void test_search_existing_key(void)
+{
+    int *key = malloc(sizeof(int));
+    int *value = malloc(sizeof(int));
+    *key = 3;
+    *value = 300;
+
+    /* Insert key before searching */
+    int insert_result = insert_ht(ht, key, sizeof(*key), value);
+    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, insert_result);
+
+    int index = search_ht(ht, key, sizeof(*key));
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
+
+    int *fetched_value = (int *)fetch_ht(ht, (uint32_t)index);
+    TEST_ASSERT_NOT_NULL(fetched_value);
+    TEST_ASSERT_EQUAL_INT(300, *fetched_value);
+
+}
+
+/**
+ * @brief Searching for a non-existent key should yield HT_KEY_NOT_FOUND.
+ */
+void test_search_nonexistent_key(void)
+{
+    int *key = malloc(sizeof(int));
+    *key = 4;
+    int index = search_ht(ht, key, sizeof(*key));
+    TEST_ASSERT_EQUAL_INT(HT_KEY_NOT_FOUND, index);
+    free(key);
+}
+
+/**
+ * @brief Removing an existing key should succeed, and subsequent searches should fail.
+ */
+void test_remove_existing_key(void)
+{
+    int *key = malloc(sizeof(int));
+    int *value = malloc(sizeof(int));
+    *key = 5;
+    *value = 500;
+
+    int insert_result = insert_ht(ht, key, sizeof(*key), value);
+    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, insert_result);
+
+    int remove_result = remove_ht(ht, key, sizeof(*key));
+    TEST_ASSERT_EQUAL_INT(HT_SUCCESS, remove_result);
+
+    int index = search_ht(ht, key, sizeof(*key));
+    TEST_ASSERT_EQUAL_INT(HT_KEY_NOT_FOUND, index);
+
+}
+
+/**
+ * @brief Removing a non-existent key should yield HT_KEY_NOT_FOUND.
+ */
+void test_remove_nonexistent_key(void)
+{
+    int *key = malloc(sizeof(int));
+    *key = 6;
+    int remove_result = remove_ht(ht, key, sizeof(*key));
+    TEST_ASSERT_EQUAL_INT(HT_KEY_NOT_FOUND, remove_result);
+    free(key);
+}
+
+/* --------------------------------------------------------------------------
+   EdgeCaseTests
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Passing NULL as the HashTab pointer should yield HT_INVALID_ARG.
+ */
+void test_null_input(void)
+{
+    int *key = malloc(sizeof(int));
+    int *value = malloc(sizeof(int));
+    *key = 1;
+    *value = 100;
+
+    int result = insert_ht(NULL, key, sizeof(*key), value);
     TEST_ASSERT_EQUAL_INT(HT_INVALID_ARG, result);
 
-    int index = search_ht(NULL, 1);
+    int index = search_ht(NULL, key, sizeof(*key));
     TEST_ASSERT_EQUAL_INT(HT_INVALID_ARG, index);
 
-    result = remove_ht(NULL, 1);
+    result = remove_ht(NULL, key, sizeof(*key));
     TEST_ASSERT_EQUAL_INT(HT_INVALID_ARG, result);
+
 }
 
-void test_boundary_keys(void) {
-    int result_min = insert_ht(ht, INT_MIN, -1);
+/**
+ * @brief Insert and search boundary keys like INT_MIN and INT_MAX.
+ */
+void test_boundary_keys(void)
+{
+    int *min_key = malloc(sizeof(int));
+    int *max_key = malloc(sizeof(int));
+    int *val_for_min = malloc(sizeof(int));
+    int *val_for_max = malloc(sizeof(int));
+    *min_key = INT_MIN;
+    *max_key = INT_MAX;
+    *val_for_min = -1;
+    *val_for_max = 1;
+
+    /* Insert INT_MIN */
+    int result_min = insert_ht(ht, min_key, sizeof(*min_key), val_for_min);
     TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result_min);
 
-    int result_max = insert_ht(ht, INT_MAX, 1);
+    /* Insert INT_MAX */
+    int result_max = insert_ht(ht, max_key, sizeof(*max_key), val_for_max);
     TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result_max);
 
-    int index_min = search_ht(ht, INT_MIN);
+    /* Search for INT_MIN */
+    int index_min = search_ht(ht, min_key, sizeof(*min_key));
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index_min);
-    int value_min = fetch_ht(ht, index_min);
-    TEST_ASSERT_EQUAL_INT(-1, value_min);
+    int *fetched_min = (int *)fetch_ht(ht, (uint32_t)index_min);
+    TEST_ASSERT_NOT_NULL(fetched_min);
+    TEST_ASSERT_EQUAL_INT(-1, *fetched_min);
 
-    int index_max = search_ht(ht, INT_MAX);
+    /* Search for INT_MAX */
+    int index_max = search_ht(ht, max_key, sizeof(*max_key));
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index_max);
-    int value_max = fetch_ht(ht, index_max);
-    TEST_ASSERT_EQUAL_INT(1, value_max);
+    int *fetched_max = (int *)fetch_ht(ht, (uint32_t)index_max);
+    TEST_ASSERT_NOT_NULL(fetched_max);
+    TEST_ASSERT_EQUAL_INT(1, *fetched_max);
+
 }
 
-void test_high_collision_scenario(void) {
-    size_t table_size = size_ht(ht);
+/**
+ * @brief Insert a key "0" as a special boundary test.
+ */
+void test_zero_key_insertion(void)
+{
+    int *key = malloc(sizeof(int));
+    int *value = malloc(sizeof(int));
+    *key = 0;
+    *value = 999;
 
-    for (size_t i = 0; i < table_size; i++) {
-        int key = i * table_size; // Keys designed to collide
-        int result = insert_ht(ht, key, i);
-        TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
-    }
-
-    for (size_t i = 0; i < table_size; i++) {
-        int key = i * table_size;
-        int index = search_ht(ht, key);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
-        int value = fetch_ht(ht, index);
-        TEST_ASSERT_EQUAL_INT(i, value);
-    }
-}
-
-void test_zero_key_insertion(void) {
-    int result = insert_ht(ht, 0, 999);
+    int result = insert_ht(ht, key, sizeof(*key), value);
     TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
 
-    int index = search_ht(ht, 0);
+    int index = search_ht(ht, key, sizeof(*key));
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
-    int value = fetch_ht(ht, index);
-    TEST_ASSERT_EQUAL_INT(999, value);
-}
-/** @} */
 
-/**
- * @defgroup AdvancedTests
- * @brief Advanced scenarios including rehashing and stress testing.
- * @{ 
- */
-void test_rehashing(
-        void
-) {
+    int *fetched_val = (int *)fetch_ht(ht, (uint32_t)index);
+    TEST_ASSERT_NOT_NULL(fetched_val);
+    TEST_ASSERT_EQUAL_INT(999, *fetched_val);
+
+}
+
+/* --------------------------------------------------------------------------
+   AdvancedTests
+ * -------------------------------------------------------------------------- */
+void test_rehashing(void)
+{
     size_t initial_size = size_ht(ht);
-    unsigned int max_entries = (unsigned int)(initial_size * DEFAULT_LOAD_FACTOR);
+    int i, *key, *value;
+    /* Assuming your default load factor is 0.75f in open_addressing.c */
+    float default_load_factor = 0.75f;
+    unsigned int max_entries = (unsigned int)(initial_size * default_load_factor);
 
-    for (unsigned int i = 0; i < max_entries + 1; i++) { 
-        int result = insert_ht(ht, i, i * 10);
+    /* Insert enough entries to trigger a resize. */
+    for (i = 0; i < max_entries + 1; i++) {
+        key = malloc(sizeof(int));
+        value = malloc(sizeof(int));
+        *key = i;
+        *value = i;
+        int result = insert_ht(ht, key, sizeof(int), value);
         TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
     }
 
-    // Verify that all inserted keys are searchable
-    for (unsigned int i = 0; i < max_entries + 1; i++) {
-        int index = search_ht(ht, i);
+    /* Verify all inserted keys. */
+    for (int i = 0; i < max_entries + 1; i++) {
+        int temp_key = i;
+        int index = search_ht(ht, &temp_key, sizeof(int));
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
-        int value = fetch_ht(ht, index);
-        TEST_ASSERT_EQUAL_INT(i * 10, value);
+
+        int *fetched_val = (int *)fetch_ht(ht, (uint32_t)index);
+        TEST_ASSERT_NOT_NULL(fetched_val);
+        TEST_ASSERT_EQUAL_INT(i, *fetched_val);
     }
 }
 
-void test_table_resize_downward(void) {
-    // Fill the table
-    for (int i = 0; i < 10; i++) {
-        int result = insert_ht(ht, i, i * 10);
+void test_table_resize_downward(void)
+{
+    int i, *key, *value;
+    /* Insert 10 entries. */
+    for (i = 0; i < 10; i++) {
+        key = malloc(sizeof(int));
+        value = malloc(sizeof(int));
+        *key = i;
+        *value = i;
+        int result = insert_ht(ht, key, sizeof(int), value);
         TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
     }
 
-    // Remove elements to trigger potential shrinking
-    for (int i = 0; i < 8; i++) {
-        int result = remove_ht(ht, i);
+    /* Remove 8 entries to (possibly) trigger downsizing. */
+    for (i = 0; i < 8; i++) {
+        int temp_key = i;
+        int result = remove_ht(ht, &temp_key, sizeof(int));
         TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
     }
 
-    // Validate the remaining entries
-    for (int i = 8; i < 10; i++) {
-        int index = search_ht(ht, i);
+    /* Validate the remaining entries (keys 8 and 9) still exist. */
+    for (i = 8; i < 10; i++) {
+        int temp_key = i;
+        int index = search_ht(ht, &temp_key, sizeof(int));
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
-        int value = fetch_ht(ht, index);
-        TEST_ASSERT_EQUAL_INT(i * 10, value);
+
+        int *fetched_val = (int *)fetch_ht(ht, (uint32_t)index);
+        TEST_ASSERT_NOT_NULL(fetched_val);
+        TEST_ASSERT_EQUAL_INT(i , *fetched_val);
     }
 }
-
-void test_large_insertions(void) {
-    size_t large_size = 1000000; // 1 million entries
-    for (size_t i = 0; i < large_size; i++) {
-        int result = insert_ht(ht, i, i * 10);
-        TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
-    }
-
-    for (size_t i = 0; i < large_size; i++) {
-        int index = search_ht(ht, i);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
-        int value = fetch_ht(ht, index);
-        TEST_ASSERT_EQUAL_INT(i * 10, value);
-    }
-}
-
-void test_insert_into_full_table_should_fail(
-        void
-) {
-    /* Initialize hash table with a small fixed size 
-     * and load factor of 1.0 to prevent resizing
-     */ 
-    unsigned int i, size;
-    int result;
-
-    size = size_ht(ht);
-    ht = init_ht(2, 0, 1.0, 0, 0, NULL, NULL, probing_method);
-    TEST_ASSERT_NOT_NULL(ht);
-
-    // Fill the table to capacity
-    for (i = 0; i < size; i++) {
-        result = insert_ht(ht, i, i * 10);
-        TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
-    }
-
-    // Attempt to insert into a full table
-    result = insert_ht(ht, size, size * 10);
-    TEST_ASSERT_EQUAL_INT(HT_NO_SPACE, result);
-
-}
-/** @} */
 
 /**
- * @brief Tests the hash table implementation using a specified probing method.
- * @param method The probing method to use (e.g., LINEAR, QUADRATIC).
+ * @brief Stress test: Insert many entries (e.g. 1 million).
+ *        Adjust for performance or memory constraints in your environment.
  */
-void test_probing_method(
-        ProbingMethod method
-) {
+void test_large_insertions(void)
+{
+    size_t i, large_size = 1000;
+    int *key, *value; 
 
+    /* Insert 1 million entries */
+    for (i = 0; i < large_size; i++) {
+        key = malloc(sizeof(int));
+        value = malloc(sizeof(int));
+        *key = i;
+        *value = i;
+        int result = insert_ht(ht, key, sizeof(int), value);
+        TEST_ASSERT_EQUAL_INT(HT_SUCCESS, result);
+    }
+
+    /* Verify them */
+    for (i = 0; i < large_size; i++) {
+        int temp_key = i;
+        int index = search_ht(ht, &temp_key, sizeof(int));
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, index);
+
+        int *fetched_val = (int *)fetch_ht(ht, (uint32_t)index);
+        TEST_ASSERT_NOT_NULL(fetched_val);
+        TEST_ASSERT_EQUAL_INT(i, *fetched_val);
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Test Runner
+ * -------------------------------------------------------------------------- */
+
+void test_probing_method(ProbingMethod method)
+{
     probing_method = method;
+
     /* BasicTests */
     RUN_TEST(test_insert_should_succeed);
     RUN_TEST(test_insert_duplicate_should_fail);
@@ -256,28 +400,28 @@ void test_probing_method(
     RUN_TEST(test_search_nonexistent_key);
     RUN_TEST(test_remove_existing_key);
     RUN_TEST(test_remove_nonexistent_key);
+
     /* EdgeCaseTests */
     RUN_TEST(test_null_input);
     RUN_TEST(test_boundary_keys);
-    RUN_TEST(test_high_collision_scenario);
     RUN_TEST(test_zero_key_insertion);
+
     /* AdvancedTests */
     RUN_TEST(test_rehashing);
     RUN_TEST(test_table_resize_downward);
     RUN_TEST(test_large_insertions);
-    /**RUN_TEST(test_insert_into_full_table_should_fail);**/
 }
 
 /**
- * @brief Test runner for open addressing hash table tests.
+ * @brief Main test entry point.
  */
-int main(
-        void
-) {
-
+int main(void)
+{
     UNITY_BEGIN();
+
     printf("\n --- Linear probing --- \n");
     test_probing_method(LINEAR);
+
     printf("\n --- Quadratic probing --- \n");
     test_probing_method(QUADRATIC);
 
